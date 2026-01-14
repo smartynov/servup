@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History - Server Setup Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-server"></i> Server Setup Generator - History
+            </a>
+            <div>
+                <a href="/" class="btn btn-outline-light btn-sm me-2">
+                    <i class="fas fa-home"></i> Home
+                </a>
+                <a href="/admin" class="btn btn-outline-warning btn-sm">
+                    <i class="fas fa-cog"></i> Admin
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-history"></i> Configuration History</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="history-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- View Configuration Modal -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Configuration Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6>Basic Info</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <th width="150">Name:</th>
+                                    <td id="config-name"></td>
+                                </tr>
+                                <tr>
+                                    <th>Created:</th>
+                                    <td id="config-created"></td>
+                                </tr>
+                                <tr>
+                                    <th>Hostname:</th>
+                                    <td id="config-hostname"></td>
+                                </tr>
+                                <tr>
+                                    <th>Timezone:</th>
+                                    <td id="config-timezone"></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Download</h6>
+                            <div class="mb-2">
+                                <label class="form-label fw-bold">Script URL:</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control" id="config-url" readonly>
+                                    <button class="btn btn-outline-secondary" onclick="copyToClipboard('config-url')">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label fw-bold">Curl Command:</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control" id="config-curl" readonly>
+                                    <button class="btn btn-outline-secondary" onclick="copyToClipboard('config-curl')">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <h6>Users</h6>
+                            <div id="config-users"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Modules</h6>
+                            <div id="config-modules"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <h6>Script Content</h6>
+                        <button class="btn btn-sm btn-outline-secondary float-end" onclick="copyScript()">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                        <pre><code id="config-script" class="language-bash"></code></pre>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-success" onclick="reuseConfiguration()">
+                        <i class="fas fa-recycle"></i> Reuse Configuration
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/bash.min.js"></script>
+    <script src="/static/js/history.js"></script>
+</body>
+</html>
