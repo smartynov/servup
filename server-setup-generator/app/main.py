@@ -20,6 +20,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Read version from VERSION file
+def get_version():
+    """Read version from VERSION file"""
+    version_file = os.path.join(os.path.dirname(__file__), '..', 'VERSION')
+    try:
+        with open(version_file, 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return "1.0.0"
+
+VERSION = get_version()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,7 +61,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Server Setup Generator",
     description="Generate bash scripts for Linux server setup",
-    version="1.0.0",
+    version=VERSION,
     lifespan=lifespan
 )
 
@@ -89,7 +101,13 @@ async def history(request: Request):
 @app.get("/health")
 async def health():
     """Health check endpoint"""
-    return {"status": "healthy"}
+    return {"status": "healthy", "version": VERSION}
+
+
+@app.get("/version")
+async def version():
+    """Get application version"""
+    return {"version": VERSION}
 
 
 # ============================================================================

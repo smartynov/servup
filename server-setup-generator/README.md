@@ -49,14 +49,40 @@ Server Setup Generator - это веб-приложение для создан�
 ### Требования
 
 - Docker
-- Docker Compose
+- Docker Compose (опционально)
 
-### Установка и запуск
+### Вариант 1: Готовый Docker образ (рекомендуется)
+
+Используйте автоматически собранный образ из GitHub Container Registry:
+
+```bash
+# Последняя версия
+docker run -d \
+  --name server-setup-generator \
+  -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/scripts:/app/scripts \
+  ghcr.io/smartynov/servup:latest
+
+# Конкретная версия
+docker run -d \
+  --name server-setup-generator \
+  -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/scripts:/app/scripts \
+  ghcr.io/smartynov/servup:v1.0.0
+```
+
+Приложение будет доступно по адресу: **http://localhost:8080**
+
+> 📦 **Docker образы автоматически собираются** при каждом коммите в `main` и при создании релизов через GitHub Actions
+
+### Вариант 2: Сборка из исходников
 
 ```bash
 # Клонировать репозиторий
-git clone <repository-url>
-cd server-setup-generator
+git clone https://github.com/smartynov/servup.git
+cd servup/server-setup-generator
 
 # Запустить через Docker Compose
 docker-compose up -d
@@ -343,6 +369,97 @@ python main.py
 - **Frontend**: HTML5, CSS3, JavaScript, Bootstrap 5
 - **Database**: SQLite
 - **Container**: Docker, Docker Compose
+- **CI/CD**: GitHub Actions
+
+## CI/CD и автоматическая сборка
+
+### 🤖 GitHub Actions
+
+Проект настроен с автоматической сборкой Docker образов через GitHub Actions:
+
+#### Триггеры сборки
+
+1. **Push в main** → собирается образ с тегом `latest`
+2. **Создание тега (релиза)** → собирается образ с версионным тегом
+3. **Pull Request** → проверка сборки (без публикации)
+
+#### Workflows
+
+- **`docker-build.yml`** - Сборка и публикация Docker образов
+  - Поддержка multi-arch (amd64, arm64)
+  - Кеширование слоев для ускорения
+  - Автоматическая генерация тегов
+  - Публикация в GitHub Container Registry (ghcr.io)
+
+- **`release.yml`** - Автоматическое создание релизов
+  - Генерация changelog из коммитов
+  - Создание GitHub Release с документацией
+  - Инструкции по использованию Docker образа
+
+- **`pr-check.yml`** - Проверки при Pull Request
+  - Линтинг Python кода (flake8)
+  - Тестовая сборка Docker образа
+  - Проверка работоспособности API
+  - Сканирование безопасности (Trivy)
+
+#### Создание нового релиза
+
+**Способ 1: Автоматический (рекомендуется)**
+
+Используйте helper script для упрощенного создания релизов:
+
+```bash
+cd server-setup-generator
+./tools/release.sh
+
+# Интерактивный процесс:
+# 1. Выберите тип версии (patch/minor/major)
+# 2. Подтвердите версию
+# 3. Скрипт обновит VERSION, создаст коммит и тег
+# 4. Push на GitHub запустит автоматическую сборку
+```
+
+**Способ 2: Вручную**
+
+```bash
+# Обновить VERSION файл
+echo "1.0.0" > VERSION
+git add VERSION
+git commit -m "Bump version to v1.0.0"
+
+# Создать и опубликовать тег
+git tag -a v1.0.0 -m "Release version 1.0.0"
+git push origin main
+git push origin v1.0.0
+
+# GitHub Actions автоматически:
+# 1. Соберет Docker образ
+# 2. Опубликует его с тегами v1.0.0, 1.0, 1, latest
+# 3. Создаст GitHub Release с changelog
+```
+
+#### Доступные теги образов
+
+```bash
+# Latest (последний коммит в main)
+ghcr.io/smartynov/servup:latest
+
+# Версионные теги (семантическое версионирование)
+ghcr.io/smartynov/servup:v1.0.0
+ghcr.io/smartynov/servup:1.0
+ghcr.io/smartynov/servup:1
+
+# Теги веток
+ghcr.io/smartynov/servup:main
+
+# SHA коммита
+ghcr.io/smartynov/servup:main-abc1234
+```
+
+### 📊 Статусы сборки
+
+[![Docker Build](https://github.com/smartynov/servup/actions/workflows/docker-build.yml/badge.svg)](https://github.com/smartynov/servup/actions/workflows/docker-build.yml)
+[![Release](https://github.com/smartynov/servup/actions/workflows/release.yml/badge.svg)](https://github.com/smartynov/servup/actions/workflows/release.yml)
 
 ## Troubleshooting
 
