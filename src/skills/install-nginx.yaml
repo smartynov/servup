@@ -1,0 +1,22 @@
+id: install-nginx
+name: Install Nginx
+description: Install Nginx web server
+category: web
+os: [debian, redhat]
+priority: 20
+repeatable: false
+
+params: []
+
+scripts:
+  debian: |
+    apt-get install -y nginx
+    systemctl enable nginx
+    systemctl start nginx
+    log_success "Nginx installed and started"
+
+  redhat: |
+    yum install -y nginx
+    systemctl enable nginx
+    systemctl start nginx
+    log_success "Nginx installed and started"

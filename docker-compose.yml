@@ -1,0 +1,17 @@
+services:
+  frontend:
+    build: .
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  sync:
+    build: ./sync-server
+    ports:
+      - "3001:3001"
+    volumes:
+      - sync-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  sync-data:

@@ -1,0 +1,38 @@
+id: install-node
+name: Install Node.js
+description: Install Node.js via nvm (Node Version Manager)
+category: development
+os: [debian, redhat]
+priority: 30
+repeatable: false
+
+params:
+  - id: node_version
+    type: string
+    label: Node.js version
+    default: "22"
+
+scripts:
+  debian: |
+    if ! command -v node &>/dev/null; then
+      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+      nvm install {{node_version}}
+      nvm alias default {{node_version}}
+      log_success "Node.js {{node_version}} installed via nvm"
+    else
+      log_info "Node.js already installed: $(node --version)"
+    fi
+
+  redhat: |
+    if ! command -v node &>/dev/null; then
+      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+      nvm install {{node_version}}
+      nvm alias default {{node_version}}
+      log_success "Node.js {{node_version}} installed via nvm"
+    else
+      log_info "Node.js already installed: $(node --version)"
+    fi
