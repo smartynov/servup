@@ -1,0 +1,26 @@
+id: configure-sudoers
+name: Passwordless sudo
+description: Allow sudo group to run commands without password
+category: security
+os: [debian, redhat]
+priority: 5
+repeatable: false
+
+params: []
+
+scripts:
+  debian: |
+    if ! grep -q "^%sudo.*NOPASSWD" /etc/sudoers; then
+      echo "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+      log_success "Passwordless sudo configured for sudo group"
+    else
+      log_info "Passwordless sudo already configured"
+    fi
+
+  redhat: |
+    if ! grep -q "^%wheel.*NOPASSWD" /etc/sudoers; then
+      echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+      log_success "Passwordless sudo configured for wheel group"
+    else
+      log_info "Passwordless sudo already configured"
+    fi

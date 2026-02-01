@@ -1,0 +1,52 @@
+id: configure-inputrc
+name: Configure .inputrc
+description: Set up comfortable bash history search with arrow keys
+category: users
+os: [debian, redhat]
+priority: 41
+repeatable: true
+
+params:
+  - id: username
+    type: string
+    label: Username (leave empty for all users in /home)
+    default: ""
+
+scripts:
+  debian: |
+    INPUTRC_CONTENT='"\e[A": history-search-backward
+    "\e[B": history-search-forward
+    set show-all-if-ambiguous on
+    set completion-ignore-case on'
+    USERNAME="{{username}}"
+    if [ -n "$USERNAME" ]; then
+      echo "$INPUTRC_CONTENT" > /home/$USERNAME/.inputrc
+      chown $USERNAME:$USERNAME /home/$USERNAME/.inputrc
+      log_success ".inputrc configured for $USERNAME"
+    else
+      for DIR in /home/*/; do
+        USER=$(basename "$DIR")
+        echo "$INPUTRC_CONTENT" > "$DIR/.inputrc"
+        chown $USER:$USER "$DIR/.inputrc"
+      done
+      log_success ".inputrc configured for all users"
+    fi
+
+  redhat: |
+    INPUTRC_CONTENT='"\e[A": history-search-backward
+    "\e[B": history-search-forward
+    set show-all-if-ambiguous on
+    set completion-ignore-case on'
+    USERNAME="{{username}}"
+    if [ -n "$USERNAME" ]; then
+      echo "$INPUTRC_CONTENT" > /home/$USERNAME/.inputrc
+      chown $USERNAME:$USERNAME /home/$USERNAME/.inputrc
+      log_success ".inputrc configured for $USERNAME"
+    else
+      for DIR in /home/*/; do
+        USER=$(basename "$DIR")
+        echo "$INPUTRC_CONTENT" > "$DIR/.inputrc"
+        chown $USER:$USER "$DIR/.inputrc"
+      done
+      log_success ".inputrc configured for all users"
+    fi

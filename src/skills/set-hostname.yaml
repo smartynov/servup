@@ -1,0 +1,23 @@
+id: set-hostname
+name: Set Hostname
+description: Set the server hostname
+category: system
+os: [debian, redhat]
+priority: 1
+repeatable: false
+
+params:
+  - id: hostname
+    type: string
+    label: Hostname
+    default: ""
+    required: true
+
+scripts:
+  debian: |
+    hostnamectl set-hostname "{{hostname}}"
+    log_success "Hostname set to {{hostname}}"
+
+  redhat: |
+    hostnamectl set-hostname "{{hostname}}"
+    log_success "Hostname set to {{hostname}}"

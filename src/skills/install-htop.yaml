@@ -1,0 +1,15 @@
+id: install-htop
+name: Install htop
+description: Install htop process viewer
+category: tools
+os: [debian, redhat]
+priority: 50
+repeatable: false
+params: []
+scripts:
+  debian: |
+    apt-get install -y htop
+    log_success "htop installed"
+  redhat: |
+    yum install -y htop
+    log_success "htop installed"

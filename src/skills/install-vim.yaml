@@ -1,0 +1,15 @@
+id: install-vim
+name: Install vim
+description: Install vim text editor
+category: tools
+os: [debian, redhat]
+priority: 50
+repeatable: false
+params: []
+scripts:
+  debian: |
+    apt-get install -y vim
+    log_success "vim installed"
+  redhat: |
+    yum install -y vim
+    log_success "vim installed"

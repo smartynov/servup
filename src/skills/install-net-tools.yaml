@@ -1,0 +1,15 @@
+id: install-net-tools
+name: Install net-tools
+description: Install networking tools (ifconfig, netstat, etc.)
+category: tools
+os: [debian, redhat]
+priority: 50
+repeatable: false
+params: []
+scripts:
+  debian: |
+    apt-get install -y net-tools
+    log_success "net-tools installed"
+  redhat: |
+    yum install -y net-tools
+    log_success "net-tools installed"

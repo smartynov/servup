@@ -1,0 +1,82 @@
+id: create-user
+name: Create User
+description: Create a system user with SSH key access
+category: users
+os: [debian, redhat]
+priority: 40
+repeatable: true
+
+params:
+  - id: username
+    type: string
+    label: Username
+    default: ""
+    required: true
+  - id: groups
+    type: string
+    label: "Groups (comma-separated)"
+    default: sudo
+  - id: ssh_keys
+    type: textarea
+    label: "SSH Public Keys (one per line)"
+    default: ""
+    github_import: true
+
+scripts:
+  debian: |
+    USERNAME="{{username}}"
+    if [ -z "$USERNAME" ]; then
+      log_error "Username is required"
+      exit 1
+    fi
+    if ! id "$USERNAME" &>/dev/null; then
+      useradd -m -s /bin/bash "$USERNAME"
+      log_success "User $USERNAME created"
+    else
+      log_info "User $USERNAME already exists"
+    fi
+    GROUPS="{{groups}}"
+    if [ -n "$GROUPS" ]; then
+      usermod -aG $GROUPS "$USERNAME"
+      log_info "User $USERNAME added to groups: $GROUPS"
+    fi
+    SSH_KEYS="{{ssh_keys}}"
+    if [ -n "$SSH_KEYS" ]; then
+      mkdir -p /home/$USERNAME/.ssh
+      cat > /home/$USERNAME/.ssh/authorized_keys << 'SSHKEYS'
+    {{ssh_keys}}
+    SSHKEYS
+      chmod 700 /home/$USERNAME/.ssh
+      chmod 600 /home/$USERNAME/.ssh/authorized_keys
+      chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+      log_success "SSH keys configured for $USERNAME"
+    fi
+
+  redhat: |
+    USERNAME="{{username}}"
+    if [ -z "$USERNAME" ]; then
+      log_error "Username is required"
+      exit 1
+    fi
+    if ! id "$USERNAME" &>/dev/null; then
+      useradd -m -s /bin/bash "$USERNAME"
+      log_success "User $USERNAME created"
+    else
+      log_info "User $USERNAME already exists"
+    fi
+    GROUPS="{{groups}}"
+    if [ -n "$GROUPS" ]; then
+      usermod -aG $GROUPS "$USERNAME"
+      log_info "User $USERNAME added to groups: $GROUPS"
+    fi
+    SSH_KEYS="{{ssh_keys}}"
+    if [ -n "$SSH_KEYS" ]; then
+      mkdir -p /home/$USERNAME/.ssh
+      cat > /home/$USERNAME/.ssh/authorized_keys << 'SSHKEYS'
+    {{ssh_keys}}
+    SSHKEYS
+      chmod 700 /home/$USERNAME/.ssh
+      chmod 600 /home/$USERNAME/.ssh/authorized_keys
+      chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
+      log_success "SSH keys configured for $USERNAME"
+    fi

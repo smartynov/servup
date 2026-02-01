@@ -1,0 +1,23 @@
+id: set-timezone
+name: Set Timezone
+description: Configure the system timezone
+category: system
+os: [debian, redhat]
+priority: 2
+repeatable: false
+
+params:
+  - id: timezone
+    type: string
+    label: Timezone
+    default: UTC
+    required: true
+
+scripts:
+  debian: |
+    timedatectl set-timezone "{{timezone}}"
+    log_success "Timezone set to {{timezone}}"
+
+  redhat: |
+    timedatectl set-timezone "{{timezone}}"
+    log_success "Timezone set to {{timezone}}"

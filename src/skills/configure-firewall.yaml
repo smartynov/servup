@@ -1,0 +1,44 @@
+id: configure-firewall
+name: Configure Firewall
+description: Set up UFW (Debian) or firewalld (RHEL) with SSH allowed
+category: security
+os: [debian, redhat]
+priority: 7
+repeatable: false
+
+params:
+  - id: extra_ports
+    type: string
+    label: "Additional ports to allow (comma-separated, e.g. 80,443)"
+    default: ""
+
+scripts:
+  debian: |
+    apt-get install -y ufw
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow ssh
+    EXTRA="{{extra_ports}}"
+    if [ -n "$EXTRA" ]; then
+      IFS=',' read -ra PORTS <<< "$EXTRA"
+      for PORT in "${PORTS[@]}"; do
+        ufw allow "$(echo "$PORT" | xargs)"
+      done
+    fi
+    ufw --force enable
+    log_success "UFW firewall configured"
+
+  redhat: |
+    yum install -y firewalld
+    systemctl enable firewalld
+    systemctl start firewalld
+    firewall-cmd --permanent --add-service=ssh
+    EXTRA="{{extra_ports}}"
+    if [ -n "$EXTRA" ]; then
+      IFS=',' read -ra PORTS <<< "$EXTRA"
+      for PORT in "${PORTS[@]}"; do
+        firewall-cmd --permanent --add-port="$(echo "$PORT" | xargs)/tcp"
+      done
+    fi
+    firewall-cmd --reload
+    log_success "firewalld configured"
