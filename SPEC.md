@@ -1,651 +1,193 @@
-# ServUp v2 — Technical Specification
+# ServUp — Technical Specification
 
-## 1. Product Overview
+## What this is
 
-**ServUp** — инструмент для быстрой настройки Linux-серверов. Пользователь собирает конфигурацию из скиллов (skills) — модульных bash-блоков с параметрами — и получает готовый идемпотентный bash-скрипт.
+ServUp helps people who set up Linux servers regularly. Instead of writing the same bash commands over and over, you assemble a configuration from building blocks (we call them "skills"), fill in the details, and get a clean, idempotent bash script.
 
-### Ключевые принципы
+The tool is aimed at DevOps engineers and developers who understand what they are doing. ServUp does not try to be smarter than the user. It is convenience, not magic.
 
-- **Front-only** — вся логика в браузере, сервер не обязателен
-- **Offline-first** — PWA, работает без интернета
-- **Privacy-first** — данные шифруются паролем пользователя (опционально)
-- **Everything is a skill** — единая абстракция для всего: создание юзера, установка Docker, настройка hostname — всё скиллы
-- **Simple** — минимум абстракций, читаемый код, скилл = bash с удобствами
+## Key design decisions
 
-### Целевая аудитория
+These are the principles we arrived at during design and the reasoning behind them.
 
-DevOps-инженеры и разработчики, которые понимают что делают и хотят автоматизировать рутину настройки серверов.
+### Everything is a skill
 
----
+Early designs had separate concepts for "users", "server settings", and "modules". We collapsed all of them into one abstraction: **skills**. Creating a user is a skill. Setting a hostname is a skill. Installing Docker is a skill. This means:
 
-## 2. Architecture
+- One data model instead of three
+- One UI pattern for everything
+- Community can extend anything by writing YAML files
+- The generator is trivial — it just walks a list
 
-### 2.1 High-level
+We considered making skills more powerful (with custom UI, nested data structures, inter-skill data passing), but decided against it. A skill is just a bash snippet with some parameters. If you need complex logic, write it in bash — that's what the target audience is comfortable with.
 
-```
-┌─────────────────────────────────────────────────┐
-│                   Browser                        │
-│                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │    UI     │  │  Store   │  │  Generator    │  │
-│  │ (React + │──│ (Zustand │──│ (TS, pure     │  │
-│  │  shadcn) │  │ + IDB)   │  │  functions)   │  │
-│  └──────────┘  └────┬─────┘  └───────────────┘  │
-│                     │                            │
-│              ┌──────┴──────┐                     │
-│              │  Crypto     │                     │
-│              │ (Web Crypto │                     │
-│              │  API)       │                     │
-│              └──────┬──────┘                     │
-│                     │ (encrypted)                │
-└─────────────────────┼───────────────────────────┘
-                      │ optional sync
-               ┌──────┴──────┐
-               │ Sync Server │
-               │ (key-value  │
-               │  store)     │
-               └─────────────┘
-```
+### No inter-skill communication
 
-### 2.2 Два режима деплоя
+Skills don't know about each other. If the Docker skill needs to run before the "Create User" skill (so you can add users to the `docker` group), you just put Docker higher in the list and type `docker` in the groups field. Priorities control the default ordering, but the user can rearrange freely.
 
-| Режим | Состав | PWA | Sync | Как запустить |
-|-------|--------|-----|------|---------------|
-| **Docker** | nginx (frontend) + sync-server | Да | Да | `docker compose up` |
-| **Single HTML** | Один .html файл | Нет | Нет | Открыть в браузере |
+We explicitly rejected dependency resolution between skills. This is not a replacement for bash or Ansible. It is a quick way to assemble a setup script with a nice UI.
 
-### 2.3 Tech Stack
+### Front-only architecture
 
-| Слой | Технология | Зачем |
-|------|-----------|-------|
-| UI framework | React 18 + TypeScript | Компонентный UI, типизация |
-| UI components | shadcn/ui + Tailwind CSS 4 | Стильный, кастомизируемый дизайн |
-| State | Zustand | Простой стейт без бойлерплейта |
-| Storage | IndexedDB (через `idb`) | Персистентное хранение в браузере |
-| Encryption | Web Crypto API (PBKDF2 + AES-GCM) | E2E шифрование без зависимостей |
-| YAML parsing | js-yaml | Парсинг skill-файлов |
-| Syntax highlight | highlight.js | Подсветка bash в превью скрипта |
-| Build | Vite | Быстрая сборка, HMR |
-| Single-file | vite-plugin-singlefile | Один HTML-файл как бонусный артефакт |
-| PWA | vite-plugin-pwa | Service Worker, manifest, офлайн |
-| Router | react-router (hash mode) | Навигация, закладки, кнопка "назад" |
-| Sync server | Node.js + Express | Минимальный бэкенд (~100 строк) |
-| Container | Docker + nginx | Продакшн-деплой |
+The entire application runs in the browser. There is no backend needed for the core workflow: pick skills, fill parameters, generate script, copy it. Data lives in IndexedDB.
 
----
+This gives us two deployment options:
+- **Docker** — nginx serving the built frontend, optionally with a sync server
+- **Single HTML file** — everything inlined, open it from disk
 
-## 3. Data Model
+PWA support (service worker, installable) works in the Docker/hosted mode. The single-file mode works offline too, but without service worker features.
 
-### 3.1 Core Principle: Everything is a Skill
+### Optional encrypted sync
 
-Нет отдельных "users", "server settings", "modules". Всё — скиллы. Создание юзера — скилл. Hostname — скилл. Docker — скилл. Единая абстракция.
+For users who want to access their configurations from multiple devices, there is an optional sync server. It is deliberately simple — a key-value store that holds encrypted blobs. The server cannot read the data.
 
-### 3.2 Skill (определение)
+The encryption scheme:
+1. User sets a vault password
+2. PBKDF2 derives two keys from the password: an encryption key and an auth token
+3. Data is encrypted with AES-GCM before leaving the browser
+4. The auth token identifies the user to the server (it is not the password)
+5. The server stores `{ token → encrypted_blob }`
 
-```typescript
-interface Skill {
-  id: string;              // "create-user", "install-docker"
-  name: string;            // "Create User"
-  description: string;     // краткое описание
-  category: string;        // "users", "system", "security", "containers", "tools", ...
-  os: ('debian' | 'redhat')[];
-  priority: number;        // подсказка порядка при добавлении (ниже = раньше, default 50)
-  repeatable: boolean;     // можно добавить несколько раз (default false)
-  builtin: boolean;        // встроенный или импортированный
+Sync requires the vault to be enabled. Without encryption, there is nothing to sync.
 
-  params: SkillParam[];
-  scripts: {
-    debian?: string;       // bash-код для Debian/Ubuntu
-    redhat?: string;       // bash-код для RHEL/CentOS
-  };
-}
+### Skills as a plugin format
 
-interface SkillParam {
-  id: string;              // "username", "version"
-  label: string;           // "Username", "Docker Compose version"
-  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
-  default: string;
-  required: boolean;       // default true
-  options?: string[];      // для type: 'select'
-  github_import?: boolean; // для type: 'textarea' — показать кнопку "Import from GitHub"
-}
-```
-
-### 3.3 YAML формат скилла
+Skills are YAML files that can be shared, committed to repos, imported by URL, or pasted from clipboard. The format is intentionally simple:
 
 ```yaml
-id: create-user
-name: Create User
-description: Create a system user with SSH key access
-category: users
+id: install-nginx
+name: Install Nginx
+description: Install and enable Nginx web server
+category: web
 os: [debian, redhat]
 priority: 20
-repeatable: true
+repeatable: false
 
 params:
-  - id: username
+  - id: worker_connections
     type: string
-    label: Username
-    required: true
-  - id: groups
-    type: string
-    label: "Groups (comma-separated)"
-    default: sudo
-  - id: ssh_keys
-    type: textarea
-    label: "SSH Public Keys (one per line)"
-    github_import: true
+    label: Worker connections
+    default: "1024"
 
 scripts:
   debian: |
-    USERNAME="{{username}}"
-    if ! id "$USERNAME" &>/dev/null; then
-      useradd -m -s /bin/bash "$USERNAME"
-      log_success "User $USERNAME created"
-    else
-      log_info "User $USERNAME already exists"
-    fi
-    GROUPS="{{groups}}"
-    if [ -n "$GROUPS" ]; then
-      usermod -aG $GROUPS "$USERNAME"
-      log_info "User $USERNAME added to groups: $GROUPS"
-    fi
-    SSH_KEYS="{{ssh_keys}}"
-    if [ -n "$SSH_KEYS" ]; then
-      mkdir -p /home/$USERNAME/.ssh
-      cat > /home/$USERNAME/.ssh/authorized_keys << 'SSHKEYS'
-    {{ssh_keys}}
-    SSHKEYS
-      chmod 700 /home/$USERNAME/.ssh
-      chmod 600 /home/$USERNAME/.ssh/authorized_keys
-      chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
-      log_success "SSH keys configured for $USERNAME"
-    fi
-
+    apt-get install -y nginx
+    systemctl enable nginx
+    log_success "Nginx installed"
   redhat: |
-    USERNAME="{{username}}"
-    if ! id "$USERNAME" &>/dev/null; then
-      useradd -m -s /bin/bash "$USERNAME"
-      log_success "User $USERNAME created"
-    else
-      log_info "User $USERNAME already exists"
-    fi
-    GROUPS="{{groups}}"
-    if [ -n "$GROUPS" ]; then
-      usermod -aG $GROUPS "$USERNAME"
-    fi
-    SSH_KEYS="{{ssh_keys}}"
-    if [ -n "$SSH_KEYS" ]; then
-      mkdir -p /home/$USERNAME/.ssh
-      cat > /home/$USERNAME/.ssh/authorized_keys << 'SSHKEYS'
-    {{ssh_keys}}
-    SSHKEYS
-      chmod 700 /home/$USERNAME/.ssh
-      chmod 600 /home/$USERNAME/.ssh/authorized_keys
-      chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh
-      log_success "SSH keys configured for $USERNAME"
-    fi
+    yum install -y nginx
+    systemctl enable nginx
+    log_success "Nginx installed"
 ```
 
-### 3.4 Configuration (документ)
+The `{{param_id}}` placeholders are replaced with parameter values. No template logic, no conditionals — just string substitution. All logic lives in bash, where the user can see and understand it.
 
-Конфигурация — список экземпляров скиллов с заполненными параметрами.
+Parameter types (`string`, `number`, `boolean`, `select`, `textarea`) map directly to HTML form elements. The `github_import: true` flag on textarea params adds a convenience button to fetch SSH keys from GitHub.
 
-```typescript
-interface Configuration {
-  id: string;              // nanoid
-  name: string;            // "My production server"
-  pinned: boolean;         // избранное (наверху списка)
-  createdAt: number;       // timestamp
-  updatedAt: number;       // timestamp
-  os: 'debian' | 'redhat'; // целевая OS
+### Configurations as documents
 
-  entries: SkillEntry[];   // упорядоченный список — и это ВСЁ
-}
+A configuration is a named document that the user edits over time. There is no separate concept of "history" or "templates". If you want a template, pin a configuration and duplicate it when needed. Auto-save (debounced) writes to IndexedDB as you edit. The generated script is not stored — it is a pure function of the configuration state and can be regenerated instantly.
 
-interface SkillEntry {
-  id: string;              // уникальный id экземпляра (nanoid)
-  skillId: string;         // ссылка на Skill.id
-  enabled: boolean;        // можно временно отключить без удаления
-  params: Record<string, string>;  // заполненные параметры
-}
-```
+### AI agent (future)
 
-Порядок entries — это порядок выполнения. При добавлении скилл вставляется по его `priority` (подсказка). Пользователь может перетаскивать для изменения порядка.
+The architecture is designed so that all operations go through Zustand store actions: `addEntry`, `updateEntry`, `removeEntry`, `createConfiguration`, etc. This means a future AI agent can call the exact same functions the UI uses. No special "AI mode" needed — the agent just manipulates the store, and the UI reflects the changes.
 
-### 3.5 App State (Zustand store)
-
-```typescript
-interface AppState {
-  // Configurations
-  configurations: Configuration[];
-  activeConfigId: string | null;
-
-  // Skills library
-  skills: Skill[];              // built-in + imported
-
-  // Vault
-  vaultEnabled: boolean;
-  vaultUnlocked: boolean;
-
-  // Sync
-  syncEnabled: boolean;
-  syncServerUrl: string;
-
-  // UI
-  theme: 'light' | 'dark' | 'system';
-
-  // Actions (примеры — полный список в реализации)
-  createConfiguration(): string;
-  duplicateConfiguration(id: string): string;
-  deleteConfiguration(id: string): void;
-  updateConfiguration(id: string, updates: Partial<Configuration>): void;
-
-  addEntry(configId: string, skillId: string): void;
-  removeEntry(configId: string, entryId: string): void;
-  updateEntry(configId: string, entryId: string, updates: Partial<SkillEntry>): void;
-  reorderEntries(configId: string, fromIndex: number, toIndex: number): void;
-
-  importSkill(yaml: string): Skill;
-  deleteSkill(id: string): void;
-}
-```
-
-### 3.6 Storage
-
-| Данные | Где хранить | Шифрование |
-|--------|------------|------------|
-| Конфигурации (entries с параметрами) | IndexedDB | Да (если vault включён) |
-| Skills (встроенные) | Бандл (статика) | Нет |
-| Skills (импортированные) | IndexedDB | Нет (публичные данные) |
-| App settings (тема, sync URL) | localStorage | Нет |
-| Vault meta (salt, verifier) | localStorage | Нет (только salt + зашифрованная проверочная строка) |
-| Derived encryption key | sessionStorage | Нет (живёт до закрытия вкладки) |
+Two planned use cases:
+1. "Set up a server for a Node.js app with Nginx reverse proxy" — the agent picks and configures skills
+2. "Create a skill for installing PostgreSQL 16" — the agent generates a YAML file
 
 ---
 
-## 4. Features (v1)
+## Data model
 
-### 4.1 Configurations
+### Skill
 
-**Список конфигураций** (sidebar):
-- Карточки всех конфигураций
-- Pinned (★) наверху
-- Сортировка по дате изменения
-- "New" — создать пустую конфигурацию
-- Контекстное меню: Duplicate, Pin/Unpin, Delete
-- Клик → открыть в редакторе
+```typescript
+interface Skill {
+  id: string              // unique slug: "install-docker"
+  name: string            // human name: "Install Docker"
+  description: string
+  category: string        // for UI grouping: "containers", "users", "security", ...
+  os: ('debian' | 'redhat')[]
+  priority: number        // insertion hint (lower = earlier, default 50)
+  repeatable: boolean     // can appear multiple times in a config
+  builtin: boolean        // shipped with the app vs imported
 
-**Редактор конфигурации:**
-- Имя (editable inline)
-- OS selector (Debian/Ubuntu | RHEL/CentOS)
-- Список entries (skill instances) с параметрами
-- Группировка по категориям
-- "Add Skill" — выбор из доступных скиллов
-- Drag & drop для изменения порядка
-- "Generate Script" — кнопка генерации
-- Авто-сохранение (debounced, в IndexedDB)
+  params: SkillParam[]
+  scripts: {
+    debian?: string
+    redhat?: string
+  }
+}
 
-### 4.2 Skill Entries в редакторе
-
-Каждый entry — карточка:
-
-```
-┌─────────────────────────────────────────────┐
-│ ☑ Create User                          [×]  │
-│                                        [⋮]  │
-│  Username:  [alice_____________]             │
-│  Groups:    [sudo,docker_______]             │
-│  SSH Keys:  [textarea] [Import from GitHub]  │
-└─────────────────────────────────────────────┘
+interface SkillParam {
+  id: string
+  label: string
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea'
+  default: string
+  required: boolean
+  options?: string[]       // for select type
+  github_import?: boolean  // show GitHub SSH key import button
+}
 ```
 
-- Чекбокс слева — enable/disable (отключить без удаления)
-- × — удалить entry
-- Параметры рендерятся по типу из SkillParam
-- Repeatable скиллы: кнопка "+ Add another [Skill Name]" под последним экземпляром
+### Configuration
 
-**Param UI по типам:**
+```typescript
+interface Configuration {
+  id: string
+  name: string
+  pinned: boolean
+  createdAt: number
+  updatedAt: number
+  os: 'debian' | 'redhat'
 
-| Param type | UI element |
-|-----------|-----------|
-| `string` | `<Input>` |
-| `number` | `<Input type="number">` |
-| `boolean` | `<Checkbox>` |
-| `select` | `<Select>` с options |
-| `textarea` | `<Textarea>` + опционально кнопка "Import from GitHub" |
+  entries: SkillEntry[]    // ordered list — this is the entire configuration
+}
 
-### 4.3 GitHub SSH Key Import
+interface SkillEntry {
+  id: string               // unique instance id
+  skillId: string          // which skill
+  enabled: boolean         // can disable without removing
+  params: Record<string, string>
+}
+```
 
-UI-хелпер для `textarea` параметров с `github_import: true`:
+The order of `entries` is the execution order. When a skill is added, it is inserted at a position based on its `priority` value. The user can reorder by dragging.
 
-1. Кнопка "Import from GitHub" рядом с textarea
-2. Dialog: ввести GitHub username
-3. Fetch `https://api.github.com/users/{username}/keys`
-4. Показать найденные ключи с чекбоксами
-5. "Import selected" → вставить в textarea (одной строкой на ключ)
+### Storage
 
-Это чисто UI-удобство, не архитектурная фича. Просто кнопка рядом с полем.
+| Data | Where | Encrypted |
+|------|-------|-----------|
+| Configurations | IndexedDB | Yes (if vault enabled) |
+| Built-in skills | App bundle | No |
+| Imported skills | IndexedDB | No (public data) |
+| App settings | localStorage | No |
+| Vault metadata | localStorage | No (just salt + verifier) |
+| Derived encryption key | sessionStorage | No (cleared on tab close) |
 
-### 4.4 Skills Library
+---
 
-Страница `#/skills`:
+## Script generation
 
-- Все доступные скиллы (built-in + imported)
-- Поиск и фильтр по категории
-- Для каждого скилла: имя, описание, категория, просмотр bash-кода
-- **Импорт:**
-  - По URL (input + "Import")
-  - Из файла (file picker / drag & drop)
-  - Из буфера обмена ("Paste YAML")
-  - Валидация при импорте (обязательные поля, корректность)
-- **Создание:** YAML-редактор с live-валидацией
-- **Экспорт:** скачать как .yaml файл
-- **Удаление:** только импортированные (built-in нельзя)
-- **Просмотр:** развернуть карточку → bash-код, параметры, метаданные
-
-### 4.5 Script Generation
-
-Генератор — чистая функция:
+The generator is a pure TypeScript function with no side effects:
 
 ```typescript
 function generateScript(config: Configuration, skills: Skill[]): string
 ```
 
-**Структура генерируемого скрипта:**
+It produces a bash script with this structure:
 
-1. **Header**
-   ```bash
-   #!/usr/bin/env bash
-   set -euo pipefail
-   # Generated by ServUp v2
-   # Configuration: "My production server"
-   # Date: 2026-02-01
-   # OS: debian
-   ```
-   - Цветные функции логирования (`log_info`, `log_success`, `log_error`)
-   - Проверка root-привилегий
-   - Начало таймера
+1. **Header** — shebang, `set -euo pipefail`, metadata comments, colored logging functions (`log_info`, `log_success`, `log_error`), root check, timer start
+2. **OS detection** — identifies apt vs yum, updates package cache
+3. **Skill blocks** — for each enabled entry in order: a comment separator, then the skill's bash code with `{{param}}` values substituted
+4. **Footer** — completion message with elapsed time
 
-2. **OS detection & package cache update**
-   - Определение apt vs yum
-   - Обновление кэша
-
-3. **Skill blocks (в порядке entries)**
-   - Для каждого enabled entry:
-     - Комментарий-разделитель с именем скилла
-     - Подстановка `{{param_id}}` → значение параметра
-     - Bash-код скилла (для выбранной OS)
-
-4. **Footer**
-   - Итоговое сообщение
-   - Время выполнения
-
-**Подстановка параметров:** простая замена `{{param_id}}` → значение. Никаких условий, циклов, хелперов. Вся логика — на bash внутри скилла.
-
-**Script Output UI:**
-- Подсветка синтаксиса (bash)
-- "Copy to clipboard"
-- "Download .sh"
-- Информация: количество скиллов, предупреждение "Review before running"
-
-### 4.6 Vault (шифрование)
-
-**Первый запуск — Welcome screen:**
-- "Set password" → создать vault
-- "Skip for now" → работать без шифрования, данные в plain IndexedDB
-
-**Создание vault:**
-1. Пароль + подтверждение
-2. Random salt (16 bytes)
-3. PBKDF2(password, salt, 100000 iterations) → 512-bit key material
-4. Первые 256 bit → `encryptionKey` (AES-GCM)
-5. Последние 256 bit → `authToken` (для sync)
-6. Шифруем тестовую строку → `verifier`
-7. localStorage: `{ salt, verifier }`
-8. sessionStorage: derived key (на время сессии)
-
-**Unlock (при загрузке с vault):**
-1. Экран ввода пароля
-2. PBKDF2(password, salt) → key
-3. Расшифровать verifier → если успех, unlock
-4. Ключ → sessionStorage
-
-**Что шифруется:** конфигурации (entries с параметрами — SSH ключи, usernames и т.д.)
-**Что НЕ шифруется:** скиллы (публичные), app settings, vault meta
-
-### 4.7 Sync (опциональная синхронизация)
-
-**Требует включённый vault** (без шифрования синхронизировать нельзя).
-
-**Протокол:**
-- `authToken` → идентификатор на сервере (derived от пароля, но сам пароль не передаётся)
-- Данные → AES-GCM(`encryptionKey`) → зашифрованный блоб → на сервер
-- Сервер хранит только блобы, не может прочитать
-
-**API:**
-```
-PUT /api/sync   { data: "base64-blob", updatedAt: timestamp }
-GET /api/sync   → { data: "base64-blob", updatedAt: timestamp }
-Authorization: Bearer {authToken}
-```
-
-**Стратегия:** last-write-wins по timestamp. Sync при открытии приложения и по кнопке "Sync now".
-
-### 4.8 PWA
-
-- `vite-plugin-pwa` → Service Worker + manifest.json
-- Кэширование всех статических ассетов
-- Полная офлайн-работа
-- Баннер "Install app" (стандартный браузерный)
-- Иконки нескольких размеров
-
-### 4.9 Settings
-
-Страница `#/settings`:
-- **Vault:** Set/change password, enable/disable
-- **Sync:** Server URL, enable/disable, "Sync now", статус
-- **Theme:** Light / Dark / System
-- **Data:** Export all (JSON), Import, Clear all data
-- **About:** Version, links
+Parameter substitution is plain string replacement. `{{username}}` becomes `alice`. If a parameter is empty, it becomes an empty string — the skill's bash code handles that with standard `if [ -n "$VAR" ]` checks.
 
 ---
 
-## 5. UI / UX
-
-### 5.1 Layout
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  ServUp                              [Settings]  [Theme]│
-├───────────┬─────────────────────────────────────────────┤
-│           │                                             │
-│  Configs  │          Active Area                        │
-│  sidebar  │                                             │
-│           │  (Editor / Script / Skills Library)         │
-│  [+ New]  │                                             │
-│           │                                             │
-│  ★ Prod   │                                             │
-│  ★ Dev    │                                             │
-│  staging  │                                             │
-│  test     │                                             │
-│           │                                             │
-└───────────┴─────────────────────────────────────────────┘
-```
-
-Mobile (< 768px): sidebar через hamburger menu.
-
-### 5.2 Страницы (hash routes)
-
-| Route | Содержимое |
-|-------|-----------|
-| `#/` | Список конфигураций или редактор активной |
-| `#/config/:id` | Редактор конфигурации |
-| `#/config/:id/script` | Сгенерированный скрипт |
-| `#/skills` | Библиотека скиллов |
-| `#/settings` | Настройки |
-
-### 5.3 Редактор конфигурации
-
-```
-┌─────────────────────────────────────────────────┐
-│ [< Back]  My production server  [✎]    [OS: ▾]  │
-├─────────────────────────────────────────────────┤
-│                                                  │
-│ ── System ──────────────────────────────────     │
-│ ☑ Set Hostname     hostname: [prod-1____]       │
-│ ☑ Set Timezone     timezone: [UTC_______▾]      │
-│                                                  │
-│ ── Users ───────────────────────────────────     │
-│ ☑ Create User      username: [alice]             │
-│                     groups: [sudo,docker]         │
-│                     ssh_keys: [...] [GitHub]      │
-│ ☑ Create User      username: [bob]               │
-│                     groups: [sudo]                │
-│                     ssh_keys: [...] [GitHub]      │
-│ [+ Add Create User]                              │
-│                                                  │
-│ ── Security ────────────────────────────────     │
-│ ☑ Passwordless sudo                              │
-│ ☑ Disable SSH Password Auth                      │
-│ ☐ Configure Firewall                             │
-│                                                  │
-│ ── Containers ──────────────────────────────     │
-│ ☑ Install Docker                                 │
-│                                                  │
-│ ── Tools ───────────────────────────────────     │
-│ ☐ Install vim                                    │
-│ ☐ Install htop                                   │
-│                                                  │
-│ ┌─────────────────────────────────────────┐      │
-│ │         ▶ Generate Script               │      │
-│ └─────────────────────────────────────────┘      │
-└──────────────────────────────────────────────────┘
-```
-
-- Entries сгруппированы по category скилла
-- Внутри группы — порядок entries из конфигурации
-- Drag & drop для перестановки
-- "Add Skill" — opens picker из доступных скиллов
-- Для repeatable — "+ Add another" под последним экземпляром
-
-### 5.4 Дизайн
-
-- shadcn/ui компоненты (Card, Button, Input, Checkbox, Select, Textarea, Dialog, Tabs, etc.)
-- Tailwind CSS
-- Dark / Light тема
-- Минималистичный, функциональный стиль
-- Моноширинный шрифт для кода и bash-превью
-
----
-
-## 6. Project Structure
-
-```
-servup/
-├── public/
-│   ├── favicon.svg
-│   └── icons/                    # PWA icons
-├── src/
-│   ├── main.tsx                  # Entry point
-│   ├── App.tsx                   # Root component + hash router
-│   ├── index.css                 # Tailwind imports
-│   │
-│   ├── components/
-│   │   └── ui/                   # shadcn/ui components
-│   │       ├── button.tsx
-│   │       ├── card.tsx
-│   │       ├── input.tsx
-│   │       ├── checkbox.tsx
-│   │       ├── select.tsx
-│   │       ├── textarea.tsx
-│   │       ├── dialog.tsx
-│   │       ├── tabs.tsx
-│   │       ├── toast.tsx
-│   │       └── ...
-│   │
-│   ├── features/
-│   │   ├── configurations/
-│   │   │   ├── ConfigSidebar.tsx     # Sidebar list of configs
-│   │   │   ├── ConfigEditor.tsx      # Main editor (list of entries)
-│   │   │   ├── SkillEntryCard.tsx    # Single entry card with params
-│   │   │   ├── AddSkillDialog.tsx    # Skill picker dialog
-│   │   │   └── GitHubImport.tsx      # GitHub SSH key import dialog
-│   │   │
-│   │   ├── script/
-│   │   │   └── ScriptView.tsx        # Generated script display
-│   │   │
-│   │   ├── skills/
-│   │   │   ├── SkillsLibrary.tsx     # Skills browser page
-│   │   │   ├── SkillCard.tsx         # Skill card (library view)
-│   │   │   ├── SkillImport.tsx       # Import dialog (URL/file/clipboard)
-│   │   │   └── SkillEditor.tsx       # YAML editor for new/edit skills
-│   │   │
-│   │   ├── vault/
-│   │   │   ├── WelcomeScreen.tsx     # First launch: set password / skip
-│   │   │   └── UnlockScreen.tsx      # Password prompt on reload
-│   │   │
-│   │   └── settings/
-│   │       └── SettingsPage.tsx      # All settings
-│   │
-│   ├── core/
-│   │   ├── generator.ts             # Bash script generation (pure function)
-│   │   ├── skills-parser.ts         # YAML → Skill parser + validation
-│   │   ├── crypto.ts                # PBKDF2, AES-GCM encrypt/decrypt
-│   │   ├── sync.ts                  # Sync client
-│   │   ├── github.ts                # GitHub API (fetch SSH keys)
-│   │   └── validators.ts            # Input validation
-│   │
-│   ├── store/
-│   │   ├── index.ts                 # Combined Zustand store
-│   │   ├── configurations.ts        # Configurations slice
-│   │   ├── skills.ts                # Skills slice
-│   │   └── vault.ts                 # Vault & sync state
-│   │
-│   ├── lib/
-│   │   ├── db.ts                    # IndexedDB wrapper (idb)
-│   │   ├── storage.ts               # Encrypted storage layer
-│   │   └── utils.ts                 # nanoid, helpers
-│   │
-│   └── skills/                      # Built-in skills (YAML files)
-│       ├── index.ts                 # Loads and exports all built-in skills
-│       ├── create-user.yaml
-│       ├── configure-inputrc.yaml
-│       ├── set-hostname.yaml
-│       ├── set-timezone.yaml
-│       ├── install-docker.yaml
-│       ├── install-nginx.yaml
-│       ├── install-node.yaml
-│       ├── install-vim.yaml
-│       ├── install-htop.yaml
-│       ├── install-net-tools.yaml
-│       ├── configure-sudoers.yaml
-│       ├── disable-ssh-password.yaml
-│       ├── configure-firewall.yaml
-│       └── install-fail2ban.yaml
-│
-├── sync-server/
-│   ├── server.ts                    # Express server (~100 lines)
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── Dockerfile
-│
-├── docker-compose.yml
-├── Dockerfile                       # Multi-stage: build frontend + nginx
-├── nginx.conf
-│
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-├── vite.config.single.ts           # Single-file build config
-├── tailwind.config.ts
-├── components.json                  # shadcn/ui config
-└── .prettierrc
-```
-
----
-
-## 7. Built-in Skills (v1)
+## Built-in skills
 
 | ID | Name | Category | Priority | Repeatable |
 |----|------|----------|----------|------------|
@@ -653,7 +195,7 @@ servup/
 | `set-timezone` | Set Timezone | system | 2 | no |
 | `configure-sudoers` | Passwordless sudo | security | 5 | no |
 | `disable-ssh-password` | Disable SSH Password Auth | security | 6 | no |
-| `configure-firewall` | Configure UFW/firewalld | security | 7 | no |
+| `configure-firewall` | Configure UFW / firewalld | security | 7 | no |
 | `install-fail2ban` | Install fail2ban | security | 8 | no |
 | `install-docker` | Install Docker | containers | 10 | no |
 | `install-nginx` | Install Nginx | web | 20 | no |
@@ -664,199 +206,91 @@ servup/
 | `install-htop` | Install htop | tools | 50 | no |
 | `install-net-tools` | Install net-tools | tools | 50 | no |
 
-Порядок в таблице = рекомендуемый порядок в скрипте. Пользователь может изменить порядок drag & drop.
+---
+
+## Tech stack
+
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| UI framework | React 18 + TypeScript | Component model, type safety |
+| UI components | shadcn/ui + Tailwind CSS 4 | Clean design, customizable |
+| State | Zustand | Minimal boilerplate, works well with persistence |
+| Storage | IndexedDB via `idb` | Persistent browser storage for structured data |
+| Encryption | Web Crypto API | PBKDF2 + AES-GCM, no dependencies |
+| YAML | js-yaml | Parse skill files |
+| Syntax highlighting | highlight.js | Bash code preview |
+| Build | Vite | Fast builds, HMR, plugin ecosystem |
+| Single-file | vite-plugin-singlefile | Inline everything into one HTML |
+| PWA | vite-plugin-pwa | Service worker, manifest, offline |
+| Router | react-router (hash mode) | Works with `file://`, bookmarkable |
+| Sync server | Node.js + Express + SQLite | ~100 lines, stores encrypted blobs |
+| Container | Docker + nginx | Production deployment |
 
 ---
 
-## 8. Sync Server
+## UI structure
 
-Минимальный Node.js/Express + SQLite:
+The app uses hash-based routing (`#/config/123`, `#/skills`, `#/settings`), which works everywhere including when opened from `file://`.
 
-```typescript
-// sync-server/server.ts — ~100 строк
-import express from 'express';
-import Database from 'better-sqlite3';
+| Route | Content |
+|-------|---------|
+| `#/` | Home — configuration list or "select a config" prompt |
+| `#/config/:id` | Configuration editor |
+| `#/config/:id/script` | Generated script view |
+| `#/skills` | Skills library (browse, import, export) |
+| `#/settings` | Theme, data management, sync settings |
 
-const app = express();
-const db = new Database('/app/data/sync.db');
+The layout has a sidebar listing configurations (pinned first, then by last modified) and a main area for the active view.
 
-db.exec(`CREATE TABLE IF NOT EXISTS store (
-  token TEXT PRIMARY KEY,
-  data TEXT NOT NULL,
-  updated_at INTEGER NOT NULL
-)`);
+The configuration editor groups skill entries by category. Each entry shows a checkbox (enable/disable), parameter fields, and a remove button. Repeatable skills show a "+ Add another" link after the last instance.
 
-app.use(express.json({ limit: '10mb' }));
+---
 
-function getToken(req) {
-  return req.headers.authorization?.replace('Bearer ', '') || null;
-}
+## Deployment
 
-app.get('/api/sync', (req, res) => {
-  const token = getToken(req);
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  const row = db.prepare('SELECT data, updated_at FROM store WHERE token = ?').get(token);
-  if (!row) return res.status(404).json({ error: 'Not found' });
-  res.json({ data: row.data, updatedAt: row.updated_at });
-});
+### Docker
 
-app.put('/api/sync', (req, res) => {
-  const token = getToken(req);
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  db.prepare(
-    'INSERT INTO store (token, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(token) DO UPDATE SET data=?, updated_at=?'
-  ).run(token, req.body.data, req.body.updatedAt, req.body.data, req.body.updatedAt);
-  res.json({ ok: true });
-});
+The Dockerfile is a multi-stage build: Node.js builds the frontend, nginx serves the static files. The docker-compose file adds an optional sync server.
 
-app.listen(3001, () => console.log('Sync server on :3001'));
+```bash
+docker compose up         # frontend on :8080, sync on :3001
 ```
 
----
+### Single HTML file
 
-## 9. Build & Deployment
-
-### 9.1 Build commands
-
-```json
-{
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:single": "vite build --config vite.config.single.ts",
-    "preview": "vite preview",
-    "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
-  }
-}
+```bash
+npm run build:single      # produces dist-single/index.html
 ```
 
-### 9.2 Docker
+This file can be opened directly in a browser, emailed, or hosted on any static server. It includes all JavaScript, CSS, and skill definitions inlined.
 
-```dockerfile
-# Dockerfile — multi-stage
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
+### CI/CD
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-```
+Three GitHub Actions workflows:
 
-```yaml
-# docker-compose.yml
-services:
-  frontend:
-    build: .
-    ports: ["8080:80"]
-
-  sync:
-    build: ./sync-server
-    ports: ["3001:3001"]
-    volumes: [sync-data:/app/data]
-
-volumes:
-  sync-data:
-```
-
-### 9.3 CI/CD (GitHub Actions)
-
-- **PR check:** lint + typecheck + build
-- **Docker:** build & push to ghcr.io
-- **Release:** GitHub release + single HTML file as artifact
+- **PR check** — runs `tsc --noEmit` and `npm run build` on every pull request
+- **Docker** — builds and pushes to `ghcr.io` on push to main and version tags
+- **Release** — on version tags, builds the single-file HTML and attaches it to a GitHub Release
 
 ---
 
-## 10. Security
+## Security considerations
 
-- Данные шифруются AES-GCM в браузере, в открытом виде не покидают клиент
-- PBKDF2 с 100k итераций для деривации ключа
-- Sync-сервер видит только зашифрованные блобы
-- Скрипты рендерятся локально, нет публичных URL
-- CSP-заголовки в nginx
-- Валидация ввода (username format, SSH key format)
-- Skills из внешних источников — пользователь видит bash-код перед импортом
-
----
-
-## 11. Future (v2)
-
-### AI Agent
-- Чат-интерфейс в приложении
-- LLM API key в vault (локально)
-- Агент вызывает те же Zustand actions, что и UI
-- Юзкейс 1: "Настрой сервер для Node.js + Nginx" → агент добавляет entries
-- Юзкейс 2: "Создай скилл для PostgreSQL 16" → агент генерирует YAML
-
-### One-time script links
-- Sync-сервер отдаёт скрипт по одноразовой ссылке
-- После первого запроса — ссылка протухает
-- `curl https://servup.example.com/s/abc123 | bash`
-
-### Skills Registry
-- GitHub-репозиторий с каталогом community-скиллов
-- Browse & install из приложения
-
-### Multi-OS
-- Windows/PowerShell support в skill format (`scripts.windows`)
+- SSH keys and other sensitive data never leave the browser unencrypted
+- Vault password is only used to derive keys (PBKDF2, 100k iterations), never stored
+- The sync server sees only encrypted blobs and an auth token (not the password)
+- Generated scripts are rendered locally, not uploaded anywhere
+- No public URLs for scripts (copy to clipboard or download only)
+- Imported skills show their bash code so the user can review before adding
+- nginx config includes security headers (X-Frame-Options, X-Content-Type-Options)
 
 ---
 
-## 12. Implementation Plan
+## Future work (v2)
 
-### Phase 1: Foundation
-- Vite + React + TS + Tailwind + shadcn/ui
-- Zustand store (configurations, skills, vault state)
-- IndexedDB persistence
-- Hash router
-- Layout (sidebar + main area)
-
-### Phase 2: Skills System
-- YAML parser + validator
-- Built-in skills (14 YAML files)
-- Skills library page (browse, view details)
-- Import (URL, file, clipboard) / export / delete
-
-### Phase 3: Configuration Editor
-- Config CRUD (create, duplicate, delete, pin)
-- SkillEntry cards with dynamic params UI
-- Add skill dialog
-- Repeatable skills (+ Add another)
-- Drag & drop reorder
-- Auto-save to IndexedDB
-- GitHub SSH key import
-
-### Phase 4: Script Generation
-- Generator function (pure TS)
-- Param substitution
-- Script view (syntax highlight, copy, download)
-
-### Phase 5: Vault & Encryption
-- Web Crypto (PBKDF2 + AES-GCM)
-- Welcome screen (set password / skip)
-- Unlock screen
-- Encrypted IndexedDB layer
-
-### Phase 6: Sync
-- Sync server (Node.js + Express + SQLite)
-- Sync client
-- Settings UI
-- Docker setup
-
-### Phase 7: PWA & Builds
-- PWA (manifest, service worker, icons)
-- Single-file build
-- Docker multi-stage build
-- nginx config
-
-### Phase 8: Polish
-- Dark/light theme
-- Responsive (mobile)
-- Error handling, toasts
-- Input validation
-- Empty states
+- **Vault encryption** — PBKDF2 + AES-GCM, welcome screen with password setup, unlock on reload
+- **Sync client** — connect to sync server, encrypted push/pull
+- **AI agent** — chat interface using the same Zustand actions as the UI
+- **One-time script links** — sync server serves script once, then the link expires
+- **Community skill registry** — a GitHub repo with an index of community-contributed skills
+- **Multi-OS** — the skill format already has a `scripts` map, so adding `scripts.windows` is possible if there is demand

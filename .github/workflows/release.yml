@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Standard build (for verification)
+      - run: npm run build
+
+      # Single-file build
+      - run: npm run build:single
+
+      - name: Rename single-file artifact
+        run: mv dist-single/index.html servup-${{ github.ref_name }}.html
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: servup-${{ github.ref_name }}.html
