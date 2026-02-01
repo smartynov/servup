@@ -58,9 +58,23 @@ Do not put React components in `core/`. Do not put business logic in components 
 
 ## Git workflow
 
+- **Main branch is protected.** Never commit directly to `main`. All changes go through feature branches and pull requests.
 - Develop on a feature branch, push, create a PR
 - PR check runs typecheck + build automatically
 - Merge to main triggers Docker image build
 - Version tags (`v1.0.0`) trigger releases with single-file HTML artifact
 
 Write clear commit messages that explain why, not just what.
+
+## Agent checklist
+
+Before considering a task complete, the agent must:
+
+1. **Verify the build works:** run `npm run build` (or `docker compose up --build` for full stack) and confirm no errors
+2. **Test functionality:** launch the app (`npm run dev`) and verify the affected features work correctly
+3. **Commit the changes:** create a descriptive commit with a clear message explaining the change
+4. **Review documentation:** after significant changes, check if `README.md`, `SPEC.md`, or other docs need updates — if so, propose the updates to the user before making them
+
+## Documentation
+
+- **English only.** All documentation, comments, commit messages, and code must be written in English. No exceptions.
