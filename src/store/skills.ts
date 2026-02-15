@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand'
 import type { Skill } from '@/types'
-import { builtinSkills, parseSkill } from '@/skills'
+import { builtinSkills } from '@/skills'
+import { parseSkillYaml } from '@/core/skills-parser'
 
 export interface SkillsSlice {
   skills: Skill[]
@@ -16,8 +17,7 @@ export const createSkillsSlice: StateCreator<SkillsSlice, [], [], SkillsSlice> =
   setSkills: (skills) => set({ skills }),
 
   importSkill: (yamlString) => {
-    const skill = parseSkill(yamlString)
-    skill.builtin = false
+    const skill = parseSkillYaml(yamlString)
     set((state) => {
       const exists = state.skills.findIndex((s) => s.id === skill.id)
       if (exists >= 0) {

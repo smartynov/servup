@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Sun, Moon, Monitor, Download, Upload, Trash2 } from 'lucide-react'
 import { saveAllConfigurations } from '@/lib/db'
+import { downloadFile } from '@/lib/utils'
 import type { Theme } from '@/types'
 
 export function SettingsPage() {
@@ -12,13 +13,7 @@ export function SettingsPage() {
 
   const handleExport = () => {
     const data = { configurations, importedSkills: skills.filter(s => !s.builtin) }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'servup-export.json'
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadFile(JSON.stringify(data, null, 2), 'servup-export.json', 'application/json')
   }
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {

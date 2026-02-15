@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { Theme } from '@/types'
+import { applyTheme } from '@/lib/utils'
 
 export interface VaultSlice {
   vaultEnabled: boolean
@@ -31,15 +32,7 @@ export const createVaultSlice: StateCreator<VaultSlice, [], [], VaultSlice> = (s
   setSyncServerUrl: (url) => set({ syncServerUrl: url }),
   setTheme: (theme) => {
     set({ theme })
-    // Apply theme to DOM
-    const root = document.documentElement
-    root.classList.remove('light', 'dark')
-    if (theme === 'system') {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      root.classList.add(isDark ? 'dark' : 'light')
-    } else {
-      root.classList.add(theme)
-    }
+    applyTheme(theme)
     localStorage.setItem('servup-theme', theme)
   },
   setInitialized: (initialized) => set({ initialized }),

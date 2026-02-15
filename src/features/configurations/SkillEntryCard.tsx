@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { X, GripVertical, Github } from 'lucide-react'
 import { useState } from 'react'
 import { GitHubImport } from './GitHubImport'
@@ -26,10 +27,8 @@ export function SkillEntryCard({ configId, entry, skill }: Props) {
     })
   }
 
-  const opacityClass = !entry.enabled ? 'opacity-50' : ''
-
   return (
-    <div className={'border rounded-lg p-3 transition-opacity ' + opacityClass}>
+    <div className={cn('border rounded-lg p-3 transition-opacity', !entry.enabled && 'opacity-50')}>
       <div className="flex items-start gap-2">
         <div className="mt-0.5 cursor-grab text-muted-foreground">
           <GripVertical className="h-4 w-4" />

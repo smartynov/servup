@@ -7,6 +7,7 @@ import { useState, useMemo } from 'react'
 import { Upload, Trash2, Download, Code, ChevronDown, ChevronRight } from 'lucide-react'
 import { SkillImport } from './SkillImport'
 import { skillToYaml } from '@/core/skills-parser'
+import { downloadFile } from '@/lib/utils'
 
 export function SkillsLibrary() {
   const { skills, deleteSkill } = useStore()
@@ -34,14 +35,7 @@ export function SkillsLibrary() {
   }, [filtered])
 
   const handleExport = (skill: typeof skills[0]) => {
-    const yamlStr = skillToYaml(skill)
-    const blob = new Blob([yamlStr], { type: 'text/yaml' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${skill.id}.yaml`
-    a.click()
-    URL.revokeObjectURL(url)
+    downloadFile(skillToYaml(skill), `${skill.id}.yaml`, 'text/yaml')
   }
 
   return (

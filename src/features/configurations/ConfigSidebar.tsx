@@ -1,6 +1,7 @@
 import { useStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn } from '@/lib/utils'
 import { Plus, Star, Trash2, Copy, MoreVertical } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -66,13 +67,13 @@ function ConfigItem({ config, isActive, onSelect, onDuplicate, onDelete, onToggl
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const enabledCount = config.entries.filter(e => e.enabled).length
-  const itemClass = isActive
-    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-    : 'hover:bg-sidebar-accent/50'
 
   return (
     <div
-      className={'group relative rounded-md px-2 py-1.5 cursor-pointer text-sm ' + itemClass}
+      className={cn(
+        'group relative rounded-md px-2 py-1.5 cursor-pointer text-sm',
+        isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/50'
+      )}
       onClick={onSelect}
     >
       <div className="flex items-center gap-1.5">

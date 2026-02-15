@@ -4,6 +4,7 @@ import { createSkillsSlice, type SkillsSlice } from './skills'
 import { createVaultSlice, type VaultSlice } from './vault'
 import { loadConfigurations, saveAllConfigurations, loadImportedSkills } from '@/lib/db'
 import { builtinSkills } from '@/skills'
+import { applyTheme } from '@/lib/utils'
 import type { Theme } from '@/types'
 
 export type AppState = ConfigurationsSlice & SkillsSlice & VaultSlice
@@ -35,19 +36,9 @@ export async function initializeStore() {
 
   const allSkills = [...builtinSkills, ...importedSkills]
 
-  // Load theme
   const savedTheme = localStorage.getItem('servup-theme') as Theme | null
   const theme = savedTheme || 'system'
-
-  // Apply theme
-  const root = document.documentElement
-  root.classList.remove('light', 'dark')
-  if (theme === 'system') {
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    root.classList.add(isDark ? 'dark' : 'light')
-  } else {
-    root.classList.add(theme)
-  }
+  applyTheme(theme)
 
   useStore.setState({
     configurations: configs,
