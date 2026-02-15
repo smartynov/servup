@@ -1,112 +1,110 @@
 # ServUp
 
-ServUp is a tool for quickly setting up Linux servers. You pick what you need from a list of skills — things like "Install Docker", "Create User", "Set Hostname" — fill in the parameters, and get a ready-to-run bash script. That's it.
+A simple tool for generating server setup scripts.
 
-The whole thing runs in your browser. There is no backend required, no accounts, nothing to install. You can also run it as a Docker container or even open it as a single HTML file.
+## Why this exists
 
-## Quick start
+Even in the age of AI, Docker, Kubernetes, and serverless, I regularly find myself manually setting up servers. Usually virtual machines, each slightly different from the last. Install vim and docker, create users and add their SSH keys, close ports, configure sudo, and so on. The same routine with small variations every time.
 
-**Development:**
+Yes, there's cloud-init and Ansible and proper configuration management systems. Those are great when you're provisioning servers by the dozen, but in my life each server is a little different and I just want something simple and flexible. So I built this.
 
-```bash
-npm install
-npm run dev
-```
+Now the workflow is: check the boxes for what I need, fill in a few parameters, and get a bash script I can run in one go. No dependencies to install on the target server, no YAML indentation puzzles, no learning curve. Just a script that does what I asked, and I can read every line of it before running.
 
-Open http://localhost:5173
+The history is saved automatically, so any past configuration becomes a template for the next one. I suspect there are many people like me. Feedback and contributions are welcome.
 
-**Docker:**
+## Getting started
 
-```bash
-docker compose up
-```
+**Option 1: Download and open**
 
-Open http://localhost:8080
+Download the latest `servup.html` from [Releases](https://github.com/smartynov/servup/releases) and open it in your browser. That's it — everything is bundled into a single file that works offline.
 
-**Single HTML file:**
+**Option 2: Run with Docker**
 
 ```bash
-npm run build:single
+docker run -p 8080:80 ghcr.io/smartynov/servup:latest
 ```
 
-Then open `dist-single/index.html` in your browser. Everything is inlined into one file.
+Open `http://localhost:8080` in your browser.
+
+## Using ServUp
+
+1. Click "New Configuration" to create a setup
+2. Add the skills you need — each skill is a piece of bash that does one thing (install Docker, create a user, configure firewall, etc.)
+3. Fill in the parameters where needed (usernames, SSH keys, ports, etc.)
+4. Click "Generate" to get your bash script
+5. Review the script, copy it, and run it on your server
+
+Your configurations are saved automatically in the browser. Pin the ones you use often. Duplicate any configuration to use it as a template.
 
 ## How it works
 
-The core idea is simple: **everything is a skill**. There are no special concepts for users, hostname, timezone, or packages. They are all skills — small YAML files that contain a bash snippet and some parameters.
+Everything in ServUp is a "skill" — a small piece of bash that does one thing. Setting a hostname is a skill. Creating a user is a skill. Installing Docker is a skill.
 
-A configuration is just an ordered list of skill instances with filled-in parameters. When you hit "Generate", ServUp walks through the list, substitutes the parameters into bash templates, and produces a single idempotent script.
+Some skills are repeatable (like "Create User") — you can add multiple instances with different parameters. Others (like "Set Hostname") appear only once.
 
-Skills don't know about each other. There is no inter-skill communication or data passing. If you need Docker installed before creating users (so you can add them to the `docker` group), you just put the Docker skill higher in the list. The user understands what they are doing — this tool makes it faster, not smarter.
+The generated script includes logging helpers, error handling, OS detection, and a root check. Parameter values are substituted directly into bash without escaping, which allows advanced patterns when you know what you're doing.
 
-## Skills
+All data is stored locally in your browser. Nothing is sent anywhere unless you explicitly enable sync.
 
-Skills are defined as YAML files. Here's what one looks like:
+---
+
+## For developers
+
+### Building from source
+
+```bash
+git clone https://github.com/smartynov/servup.git
+cd servup
+npm install
+npm run dev      # development server at localhost:5173
+npm run build    # production build to dist/
+```
+
+### Single-file build
+
+```bash
+npm run build:single   # produces dist-single/index.html
+```
+
+### Docker with sync server
+
+```bash
+docker compose up      # frontend :8080, sync server :3001
+```
+
+### Creating skills
+
+Skills are YAML files in `src/skills/`. Each skill defines parameters and bash scripts for Debian and RedHat systems:
 
 ```yaml
-id: install-docker
-name: Install Docker
-description: Install Docker Engine and enable the service
-category: containers
+id: install-nginx
+name: Install Nginx
+category: web
 os: [debian, redhat]
-priority: 10
+priority: 20
 repeatable: false
 
 params:
-  - id: compose
-    type: boolean
-    label: Install Docker Compose plugin
-    default: "true"
+  - id: worker_connections
+    type: string
+    label: Worker connections
+    default: "1024"
 
 scripts:
   debian: |
-    if ! command -v docker &>/dev/null; then
-      curl -fsSL https://get.docker.com | sh
-      systemctl enable docker
-      systemctl start docker
-      log_success "Docker installed"
-    else
-      log_info "Docker already installed"
-    fi
+    apt-get install -y nginx
+    systemctl enable nginx
+    log_success "Nginx installed"
+  redhat: |
+    yum install -y nginx
+    systemctl enable nginx
+    log_success "Nginx installed"
 ```
 
-The app ships with 14 built-in skills covering common setup tasks. You can import more from URLs, files, or by pasting YAML. Skills are just text files, so they are easy to share, commit to a repo, or generate with AI.
+Parameter placeholders `{{param_id}}` are replaced with user values. Use `log_info`, `log_success`, `log_error` for output — these are defined in the generated script header.
 
-### Repeatable skills
+See `AGENT.md` for full development guidelines.
 
-Most skills can only appear once in a configuration (you don't install Docker twice). But some skills, like "Create User", are marked `repeatable: true`. These can be added multiple times, each with different parameters — one entry per user, for example.
+## License
 
-### Parameter types
-
-Skills can define parameters with these types: `string`, `number`, `boolean`, `select`, and `textarea`. The UI renders the appropriate input for each type. Textarea fields can optionally show a "Import from GitHub" button to fetch SSH public keys by GitHub username.
-
-## Project structure
-
-```
-src/
-  features/        — React components grouped by feature
-  core/            — Pure logic: script generator, YAML parser, GitHub API
-  store/           — Zustand state management
-  skills/          — Built-in skill YAML files
-  components/ui/   — shadcn/ui components
-  lib/             — IndexedDB wrapper, utilities
-sync-server/       — Optional Node.js sync backend
-```
-
-## Tech stack
-
-React, TypeScript, Vite, Tailwind CSS 4, shadcn/ui, Zustand, IndexedDB, js-yaml, highlight.js. No backend needed for core functionality.
-
-## CI/CD
-
-- **PR checks:** TypeScript type checking + production build
-- **Docker:** Automatic image build and push to `ghcr.io` on merges to main
-- **Releases:** Tag a version (`git tag v1.0.0 && git push origin v1.0.0`) to create a GitHub Release with a downloadable single-file HTML
-
-## Future plans
-
-- **Vault encryption** — optional password to encrypt local data (PBKDF2 + AES-GCM)
-- **Sync** — encrypted backup to a simple key-value server (the server cannot read your data)
-- **AI agent** — a chat interface that picks skills and fills parameters based on natural language, using the same store actions as the UI
-- **One-time script links** — curl-friendly URLs that expire after first use
-- **Community skill registry** — a shared repo of skills you can browse and install
+MIT

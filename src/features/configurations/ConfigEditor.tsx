@@ -7,6 +7,7 @@ import { SkillEntryCard } from './SkillEntryCard'
 import { AddSkillDialog } from './AddSkillDialog'
 import { useState, useMemo } from 'react'
 import { Plus, Play, ArrowLeft } from 'lucide-react'
+import type { SkillEntry } from '@/types'
 
 export function ConfigEditor() {
   const { id } = useParams<{ id: string }>()
@@ -15,19 +16,11 @@ export function ConfigEditor() {
   const [showAddSkill, setShowAddSkill] = useState(false)
 
   const config = configurations.find((c) => c.id === id)
-  if (!config) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        <p>Configuration not found</p>
-      </div>
-    )
-  }
-
-  const existingSkillIds = config.entries.map((e) => e.skillId)
 
   // Group entries by skill category
   const groupedEntries = useMemo(() => {
-    const groups = new Map<string, typeof config.entries>()
+    if (!config) return { groups: new Map<string, SkillEntry[]>(), categoryOrder: [] as string[] }
+    const groups = new Map<string, SkillEntry[]>()
     const categoryOrder: string[] = []
     for (const entry of config.entries) {
       const skill = skills.find((s) => s.id === entry.skillId)
@@ -39,13 +32,24 @@ export function ConfigEditor() {
       groups.get(cat)!.push(entry)
     }
     return { groups, categoryOrder }
-  }, [config.entries, skills])
+  }, [config, skills])
 
   // Find repeatable skills that can have more entries added
   const repeatableSkills = useMemo(() => {
+    if (!config) return []
     const seen = new Set(config.entries.map((e) => e.skillId))
     return skills.filter((s) => s.repeatable && seen.has(s.id))
-  }, [config.entries, skills])
+  }, [config, skills])
+
+  if (!config) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-muted-foreground">
+        <p>Configuration not found</p>
+      </div>
+    )
+  }
+
+  const existingSkillIds = config.entries.map((e) => e.skillId)
 
   return (
     <div className="flex-1 overflow-auto">

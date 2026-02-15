@@ -2,9 +2,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { generateScript } from '@/core/generator'
-import { useMemo, useEffect, useRef } from 'react'
+import { downloadFile } from '@/lib/utils'
+import { useMemo, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Copy, Download, Check } from 'lucide-react'
-import { useState } from 'react'
 import hljs from 'highlight.js/lib/core'
 import bash from 'highlight.js/lib/languages/bash'
 import 'highlight.js/styles/github-dark.css'
@@ -49,13 +49,8 @@ export function ScriptView() {
   }
 
   const handleDownload = () => {
-    const blob = new Blob([script], { type: 'text/x-shellscript' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = config.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.sh'
-    a.click()
-    URL.revokeObjectURL(url)
+    const filename = config.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.sh'
+    downloadFile(script, filename, 'text/x-shellscript')
   }
 
   return (

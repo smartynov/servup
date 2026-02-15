@@ -1,80 +1,87 @@
-# Agent Development Guide
+# Development Guide
 
-Rules for AI agents (and humans) working on this codebase.
+Rules for contributors and AI agents working on this codebase.
+
+## Language
+
+All code, comments, commit messages, and documentation must be in English. This includes variable names, function names, error messages, and inline comments.
 
 ## Before you write code
 
-Read `SPEC.md` first. It explains not just what the app does, but why each design decision was made. If you are about to introduce a new concept that is not in the spec, stop and think about whether it actually needs to exist.
+Read the README first. Understand what the project does and why. If you are about to introduce a new concept, stop and think whether it actually needs to exist.
 
 ## Core principles
 
-**Everything is a skill.** Do not create new entity types. Users, hostname, timezone, packages — they are all skills. If you need something new, make it a skill.
+**Everything is a skill.** Users, hostname, timezone, packages — all skills. Do not create new entity types. If you need something new, make it a skill.
 
-**Skills do not talk to each other.** No data passing, no dependency resolution, no inter-skill references. A skill is a bash snippet with parameters. The user controls the order. Keep it that way.
+**Skills do not talk to each other.** No data passing between skills, no dependency resolution. A skill is a bash snippet with parameters. The user controls the order.
 
-**Front-only by default.** The app must work without any backend. All core logic (generation, parsing, storage) runs in the browser. The sync server is optional and only stores encrypted blobs.
+**Front-only by default.** The app works without any backend. The sync server is optional and only stores encrypted blobs it cannot read.
 
-**Simple over clever.** This is a tool for people who understand bash and servers. Do not add abstraction layers, form builders, or plugin frameworks. If something can be done with a string replacement, do not build a template engine.
+**Simple over clever.** This tool is for sysadmins who understand bash. Do not add abstraction layers, form builders, or plugin frameworks. If something can be done with plain code, do not build a system for it.
+
+**Minimalist code.** Write the least amount of code that solves the problem. Avoid premature abstractions. Three similar lines are better than a helper function you'll use once. Do not add features, comments, or error handling beyond what is needed right now.
 
 ## Before you commit
 
-1. **Type check:** `npx tsc --noEmit` must pass with zero errors
-2. **Build:** `npm run build` must succeed
-3. **Test the UI:** if you changed components, verify the app loads and basic flows work (create config, add skill, generate script)
-4. **No unused code:** do not leave unused imports, dead functions, or commented-out code
+1. `npx tsc --noEmit` must pass
+2. `npm run build` must succeed
+3. Test the UI manually if you changed components
+4. No unused imports, dead code, or commented-out code
 
-## Code style
+## Code patterns
 
-- TypeScript, strict mode. No `any` unless absolutely necessary.
-- React functional components with hooks. No class components.
-- Zustand for state. All mutations go through store actions — this is important for the future AI agent integration.
-- shadcn/ui for UI components. Do not add new UI libraries without a good reason.
-- Tailwind CSS for styling. No CSS modules, no styled-components.
-- Keep files small and focused. One component per file. If a file grows past 200 lines, consider splitting.
+TypeScript strict mode. Avoid `any`.
 
-## Skill YAML format
+React functional components with hooks. No class components.
 
-When creating or modifying built-in skills:
+Zustand for state. All mutations go through store actions.
 
-- `id` must be a lowercase kebab-case slug
-- `scripts.debian` and `scripts.redhat` should both be present where applicable
-- All bash code should be idempotent (safe to run multiple times)
-- Use `log_info`, `log_success`, `log_error` for output (these are defined in the generated script header)
-- Parameter placeholders use `{{param_id}}` syntax — plain string replacement, nothing more
-- Test the generated bash mentally or on a throwaway server
+shadcn/ui for components. Tailwind for styling. No other UI libraries.
+
+Use the `cn()` utility for conditional class names, not string concatenation.
+
+Small focused files. If a file grows past 200 lines, consider splitting.
+
+Extract shared logic only when it is actually repeated in multiple places.
+
+## Skill format
+
+When writing skills:
+
+- `id` is lowercase kebab-case
+- Include both `scripts.debian` and `scripts.redhat` where applicable
+- Bash code should be idempotent (safe to run multiple times)
+- Use `log_info`, `log_success`, `log_error` for output
+- Parameter placeholders use `{{param_id}}` syntax — plain string substitution
+- Test the generated bash on a throwaway server or VM
 
 ## Project structure
 
 ```
 src/core/       — pure logic, no React, no side effects
-src/store/      — Zustand slices, all state mutations
-src/features/   — React components, organized by feature
+src/store/      — Zustand slices, state mutations
+src/features/   — React components by feature
 src/components/ — shared UI components (shadcn)
 src/skills/     — built-in YAML skill files
-src/lib/        — utilities, IndexedDB wrapper
+src/lib/        — utilities
 ```
 
-Do not put React components in `core/`. Do not put business logic in components — use store actions instead.
+Business logic goes in `core/` or `store/`, not in components.
 
 ## Git workflow
 
-- **Main branch is protected.** Never commit directly to `main`. All changes go through feature branches and pull requests.
-- Develop on a feature branch, push, create a PR
-- PR check runs typecheck + build automatically
-- Merge to main triggers Docker image build
-- Version tags (`v1.0.0`) trigger releases with single-file HTML artifact
+Main branch is protected. All changes go through feature branches and pull requests.
 
-Write clear commit messages that explain why, not just what.
+PR triggers typecheck and build. Merge to main triggers Docker build. Version tags trigger releases.
+
+Write commit messages that explain why, not just what.
 
 ## Agent checklist
 
-Before considering a task complete, the agent must:
+Before considering a task complete:
 
-1. **Verify the build works:** run `npm run build` (or `docker compose up --build` for full stack) and confirm no errors
-2. **Test functionality:** launch the app (`npm run dev`) and verify the affected features work correctly
-3. **Commit the changes:** create a descriptive commit with a clear message explaining the change
-4. **Review documentation:** after significant changes, check if `README.md`, `SPEC.md`, or other docs need updates — if so, propose the updates to the user before making them
-
-## Documentation
-
-- **English only.** All documentation, comments, commit messages, and code must be written in English. No exceptions.
+1. Run `npm run build` and confirm no errors
+2. Test the affected features manually if you changed UI
+3. Commit with a clear message explaining why
+4. Check if README or other docs need updates after significant changes

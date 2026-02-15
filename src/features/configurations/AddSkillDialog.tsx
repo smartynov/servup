@@ -38,10 +38,9 @@ export function AddSkillDialog({ open, onClose, configId, existingSkillIds }: Pr
   const handleAdd = (skillId: string) => {
     addEntry(configId, skillId)
     const skill = skills.find(s => s.id === skillId)
-    if (skill && !skill.repeatable) {
-      // Don't close if repeatable
+    if (!skill?.repeatable) {
+      onClose()
     }
-    onClose()
   }
 
   return (
