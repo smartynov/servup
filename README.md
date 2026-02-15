@@ -12,80 +12,98 @@ Now the workflow is: check the boxes for what I need, fill in a few parameters, 
 
 The history is saved automatically, so any past configuration becomes a template for the next one. I suspect there are many people like me. Feedback and contributions are welcome.
 
-## Quick start
+## Getting started
 
-**Development:**
+**Option 1: Download and open**
+
+Download the latest `servup.html` from [Releases](https://github.com/smartynov/servup/releases) and open it in your browser. That's it — everything is bundled into a single file that works offline.
+
+**Option 2: Run with Docker**
+
 ```bash
-npm install
-npm run dev
+docker run -p 8080:80 ghcr.io/smartynov/servup:latest
 ```
 
-**Docker:**
-```bash
-docker compose up
-```
-Frontend at `http://localhost:8080`, optional sync server at `http://localhost:3001`.
+Open `http://localhost:8080` in your browser.
 
-**Single HTML file:**
-```bash
-npm run build:single
-```
-Open `dist-single/index.html` directly in a browser. Works offline, no server needed.
+## Using ServUp
+
+1. Click "New Configuration" to create a setup
+2. Add the skills you need — each skill is a piece of bash that does one thing (install Docker, create a user, configure firewall, etc.)
+3. Fill in the parameters where needed (usernames, SSH keys, ports, etc.)
+4. Click "Generate" to get your bash script
+5. Review the script, copy it, and run it on your server
+
+Your configurations are saved automatically in the browser. Pin the ones you use often. Duplicate any configuration to use it as a template.
 
 ## How it works
 
-Everything in ServUp is a "skill" — a small piece of bash that does one thing. Setting a hostname is a skill. Creating a user is a skill. Installing Docker is a skill. You pick the skills you need, fill in parameters where required, and ServUp assembles them into a single bash script.
+Everything in ServUp is a "skill" — a small piece of bash that does one thing. Setting a hostname is a skill. Creating a user is a skill. Installing Docker is a skill.
 
-Skills are YAML files:
+Some skills are repeatable (like "Create User") — you can add multiple instances with different parameters. Others (like "Set Hostname") appear only once.
+
+The generated script includes logging helpers, error handling, OS detection, and a root check. Parameter values are substituted directly into bash without escaping, which allows advanced patterns when you know what you're doing.
+
+All data is stored locally in your browser. Nothing is sent anywhere unless you explicitly enable sync.
+
+---
+
+## For developers
+
+### Building from source
+
+```bash
+git clone https://github.com/smartynov/servup.git
+cd servup
+npm install
+npm run dev      # development server at localhost:5173
+npm run build    # production build to dist/
+```
+
+### Single-file build
+
+```bash
+npm run build:single   # produces dist-single/index.html
+```
+
+### Docker with sync server
+
+```bash
+docker compose up      # frontend :8080, sync server :3001
+```
+
+### Creating skills
+
+Skills are YAML files in `src/skills/`. Each skill defines parameters and bash scripts for Debian and RedHat systems:
 
 ```yaml
-id: install-docker
-name: Install Docker
-category: containers
+id: install-nginx
+name: Install Nginx
+category: web
 os: [debian, redhat]
-priority: 10
+priority: 20
+repeatable: false
 
 params:
-  - id: compose
-    type: boolean
-    label: Install Docker Compose
-    default: "true"
+  - id: worker_connections
+    type: string
+    label: Worker connections
+    default: "1024"
 
 scripts:
   debian: |
-    curl -fsSL https://get.docker.com | sh
-    log_success "Docker installed"
+    apt-get install -y nginx
+    systemctl enable nginx
+    log_success "Nginx installed"
+  redhat: |
+    yum install -y nginx
+    systemctl enable nginx
+    log_success "Nginx installed"
 ```
 
-The `{{param_id}}` placeholders are replaced with the values you enter. This is plain string substitution — the target audience understands bash, so complex logic belongs in the bash code itself.
+Parameter placeholders `{{param_id}}` are replaced with user values. Use `log_info`, `log_success`, `log_error` for output — these are defined in the generated script header.
 
-Some skills are repeatable (like "Create User"), meaning you can add multiple instances with different parameters. Others (like "Set Hostname") appear at most once.
-
-The generated script includes logging helpers, error handling, OS detection, and a root check.
-
-## A note on parameter substitution
-
-Parameter values are substituted directly into the bash script without escaping. This is intentional. It allows advanced patterns like command substitution when you know what you're doing. The generated script is meant to be reviewed before running — this is a tool for people who understand bash, not a black box.
-
-## Data storage
-
-Everything is stored locally in your browser (IndexedDB). Nothing is sent anywhere unless you enable sync. The optional sync feature uses end-to-end encryption — the server stores only encrypted blobs it cannot read.
-
-## Project structure
-
-```
-src/core/       — script generation, YAML parsing
-src/store/      — state management (Zustand)
-src/features/   — UI components by feature
-src/skills/     — built-in skill definitions
-sync-server/    — optional encrypted sync server
-```
-
-Tech stack: React, TypeScript, Vite, Tailwind CSS, shadcn/ui, Zustand.
-
-## Contributing
-
-See `AGENT.md` for development guidelines. The short version: keep it simple, everything is a skill, and run `npm run build` before committing.
+See `AGENT.md` for full development guidelines.
 
 ## License
 
