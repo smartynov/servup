@@ -71,8 +71,17 @@ Business logic goes in `core/` or `store/`, not in components.
 
 ## Git workflow
 
-Develop on a feature branch. Push and create a PR.
+Main branch is protected. All changes go through feature branches and pull requests.
 
 PR triggers typecheck and build. Merge to main triggers Docker build. Version tags trigger releases.
 
 Write commit messages that explain why, not just what.
+
+## Agent checklist
+
+Before considering a task complete:
+
+1. Run `npm run build` and confirm no errors
+2. Test the affected features manually if you changed UI
+3. Commit with a clear message explaining why
+4. Check if README or other docs need updates after significant changes
